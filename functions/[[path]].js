@@ -1,54 +1,34 @@
 // ========================================================
-// CLOUDFLARE PAGES FUNCTIONS - UDP BRIDGE OVER WEBSOCKET
-// TARGET: BYPASS TURN UDP WEBRTC TO BACKEND RAILWAY
+// CLOUDFLARE PAGES FUNCTIONS - STABLE WEBSOCKET PROXY
+// TARGET: FAST BYPASS VLESS/TUNNEL TO BACKEND RAILWAY
 // ========================================================
 
 export async function onRequest(context) {
   const request = context.request;
   const BACKEND = "vtes.jibvpn.biz.id"; // Domain Railway Lu
 
-  // Jika koneksi adalah request WebSocket (Jalur VPN & UDP Bridge)
+  // Jika koneksi adalah request WebSocket (Jalur utama VLESS lu)
   if (request.headers.get("Upgrade") === "websocket") {
-    const pair = new WebSocketPair();
-    const client = pair[0];
-    const server = pair[1];
-
-    client.accept();
-
-    // Lakukan koneksi ke backend utama Railway lu
     const url = new URL(request.url);
     url.hostname = BACKEND;
-    url.protocol = "https:";
+    url.protocol = "https:"; // Wajib HTTPS untuk port 443
 
     const newHeaders = new Headers(request.headers);
     newHeaders.set("Host", BACKEND);
 
-    // Hubungkan endpoint Edge Cloudflare langsung ke Railway
-    const backendWS = await fetch(url.toString(), {
-      method: request.method,
-      headers: newHeaders,
-      redirect: "manual"
-    });
-
-    if (backendWS.headers.get("Upgrade") === "websocket") {
-      // Jembatani komunikasi data secara agresif biarkan stream loss-less lepas
-      const socket = backendWS.webSocket;
-      if (socket) {
-        socket.accept();
-        
-        // Teruskan data bolak-balik tanpa filter (Bypass UDP-over-TCP)
-        client.addEventListener('message', (e) => socket.send(e.data));
-        socket.addEventListener('message', (e) => client.send(e.data));
-        
-        client.addEventListener('close', () => socket.close());
-        socket.addEventListener('close', () => client.close());
-      }
+    // Meneruskan jabat tangan WebSocket secara langsung tanpa memutus data stream
+    try {
+      return await fetch(url.toString(), {
+        method: request.method,
+        headers: newHeaders,
+        redirect: "manual"
+      });
+    } catch (err) {
+      return new Response("WebSocket Proxy Error", { status: 502 });
     }
-    
-    return new Response(null, { status: 101, webSocket: server });
   }
 
-  // Trafik web UI biasa
+  // Trafik web UI biasa agar dashboard monitor ddfathuvles tetep bisa dibuka
   const url = new URL(request.url);
   url.hostname = BACKEND;
   const newHeaders = new Headers(request.headers);
