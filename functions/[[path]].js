@@ -1,46 +1,59 @@
 // ========================================================
-// CLOUDFLARE PAGES FUNCTIONS - UNIVERSAL EDGE REVERSE PROXY
-// Target: Meneruskan WebSocket VPN ke Backend Railway
+// CLOUDFLARE PAGES FUNCTIONS - UDP BRIDGE OVER WEBSOCKET
+// TARGET: BYPASS TURN UDP WEBRTC TO BACKEND RAILWAY
 // ========================================================
 
 export async function onRequest(context) {
   const request = context.request;
-  
-  // 1. TENTUKAN BACKEND ASLI LU (Domain Railway Lu)
-  // Lu bisa masukkan lebih dari satu domain di dalam array ini kalau mau di-load balance
-  const BACKENDS = [
-    "vtes.jibvpn.biz.id", 
-    // "backend-cadangan.railway.internal" // Bisa ditambah jika punya beberapa app
-  ];
+  const BACKEND = "vtes.jibvpn.biz.id"; // Domain Railway Lu
 
-  // Logika acak (Round Robin / Random) untuk Load Balancing jika backend lebih dari satu
-  const targetBackend = BACKENDS[Math.floor(Math.random() * BACKENDS.length)];
-
-  const url = new URL(request.url);
-  
-  // Ubah alamat tujuan ke backend Railway lu
-  url.hostname = targetBackend;
-  url.protocol = "https:"; 
-
-  // 2. JIKA KONEKSI ADALAH WEBSOCKET (Trafik VPN Lu)
+  // Jika koneksi adalah request WebSocket (Jalur VPN & UDP Bridge)
   if (request.headers.get("Upgrade") === "websocket") {
-    // Salin header asli dan sesuaikan Host-nya agar diterima oleh Railway/Argo
-    const newHeaders = new Headers(request.headers);
-    newHeaders.set("Host", targetBackend);
+    const pair = new WebSocketPair();
+    const client = pair[0];
+    const server = pair[1];
 
-    // Lakukan fetch langsung ke backend untuk menjembatani WebSocket stream
-    return fetch(url.toString(), {
+    client.accept();
+
+    // Lakukan koneksi ke backend utama Railway lu
+    const url = new URL(request.url);
+    url.hostname = BACKEND;
+    url.protocol = "https:";
+
+    const newHeaders = new Headers(request.headers);
+    newHeaders.set("Host", BACKEND);
+
+    // Hubungkan endpoint Edge Cloudflare langsung ke Railway
+    const backendWS = await fetch(url.toString(), {
       method: request.method,
       headers: newHeaders,
       redirect: "manual"
     });
+
+    if (backendWS.headers.get("Upgrade") === "websocket") {
+      // Jembatani komunikasi data secara agresif biarkan stream loss-less lepas
+      const socket = backendWS.webSocket;
+      if (socket) {
+        socket.accept();
+        
+        // Teruskan data bolak-balik tanpa filter (Bypass UDP-over-TCP)
+        client.addEventListener('message', (e) => socket.send(e.data));
+        socket.addEventListener('message', (e) => client.send(e.data));
+        
+        client.addEventListener('close', () => socket.close());
+        socket.addEventListener('close', () => client.close());
+      }
+    }
+    
+    return new Response(null, { status: 101, webSocket: server });
   }
 
-  // 3. JIKA HANYA DIOSSES LEWAT BROWSER BISA DI-FORWARD ATAU DIBERI RESPONS
-  // Meneruskan request HTTP biasa (seperti halaman UI monitor lu) agar tetep bisa diakses
+  // Trafik web UI biasa
+  const url = new URL(request.url);
+  url.hostname = BACKEND;
   const newHeaders = new Headers(request.headers);
-  newHeaders.set("Host", targetBackend);
-  
+  newHeaders.set("Host", BACKEND);
+
   return fetch(url.toString(), {
     method: request.method,
     headers: newHeaders,
