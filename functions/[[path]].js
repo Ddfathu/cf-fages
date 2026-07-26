@@ -5,7 +5,7 @@
 
 export async function onRequest(context) {
   const request = context.request;
-  const BACKEND = "udpvles2.dfathu.web.id"; // Domain Railway Lu
+  const BACKEND = "udpvles1.dfathu.web.id"; // Domain Railway Lu
 
   // Jika koneksi adalah request WebSocket (Jalur utama VLESS lu)
   if (request.headers.get("Upgrade") === "websocket") {
