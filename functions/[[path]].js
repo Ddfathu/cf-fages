@@ -5,7 +5,7 @@
 
 export async function onRequest(context) {
   const request = context.request;
-  const BACKEND = "vtes.jibvpn.biz.id"; // Domain Railway Lu
+  const BACKEND = "nodejs-argo-production-7a5d.up.railway.app"; // Domain Railway Lu
 
   // Jika koneksi adalah request WebSocket (Jalur utama VLESS lu)
   if (request.headers.get("Upgrade") === "websocket") {
